@@ -4,7 +4,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { authMiddleware } from './middleware/auth';
 import { setEnvContext, clearEnvContext } from './lib/env';
-import { generateAIHooks } from './lib/ai-service';
+import { generateAIHooks, generateDemoScripts } from './lib/ai-service';
 
 type Env = {
   RUNTIME?: string;
@@ -102,6 +102,64 @@ protectedRoutes.post('/hooks/generate', async (c) => {
       details: error instanceof Error ? error.message : 'Unknown error',
       success: false
     }, 500);
+  }
+});
+
+// Generate demo scripts for projects
+protectedRoutes.post('/demo-scripts/generate', async (c) => {
+  const user = c.get('user');
+  
+  try {
+    const { projectName, projectDescription, category, tone, count = 5 } = await c.req.json();
+    
+    if (!projectName || !projectDescription) {
+      return c.json({ error: 'Project name and description are required' }, 400);
+    }
+
+    console.log(`🎯 Generating ${count} demo scripts for user ${user.id}`);
+    console.log(`📱 Project: ${projectName}`);
+    console.log(`📂 Category: ${category} | Tone: ${tone}`);
+    console.log(`📝 Description: ${projectDescription.substring(0, 100)}...`);
+    
+    const scripts = await generateDemoScripts(projectName, projectDescription, category, tone, count);
+    
+    console.log(`✅ Successfully generated ${scripts.length} demo scripts`);
+    
+    return c.json({ 
+      scripts,
+      generated: scripts.length,
+      category,
+      tone,
+      timestamp: new Date().toISOString(),
+      success: true
+    });
+    
+  } catch (error) {
+    console.error('❌ Demo script generation error:', error);
+    console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    
+    // Provide more specific error information
+    let errorMessage = 'Failed to generate demo scripts';
+    let statusCode = 500;
+    
+    if (error instanceof Error) {
+      if (error.message.includes('API key')) {
+        errorMessage = 'OpenAI API key not configured or invalid';
+        statusCode = 503;
+      } else if (error.message.includes('quota') || error.message.includes('billing')) {
+        errorMessage = 'OpenAI API quota exceeded or billing issue';
+        statusCode = 503;
+      } else if (error.message.includes('JSON')) {
+        errorMessage = 'Invalid response format from AI service';
+        statusCode = 502;
+      }
+    }
+    
+    return c.json({ 
+      error: errorMessage,
+      details: error instanceof Error ? error.message : 'Unknown error',
+      success: false
+    }, statusCode);
   }
 });
 

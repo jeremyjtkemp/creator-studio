@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { Asset, AssetType, getProjectAssets, uploadAsset, deleteAsset, CreateAssetData } from './assets'
+import { Asset, AssetType, getCombinedAssets, uploadAsset, uploadGlobalMusicAsset, deleteAsset, CreateAssetData } from './assets'
 import { useAuth } from './auth-context'
 import { useProjects } from './project-context'
 import { onSnapshot, collection, query, where, orderBy } from 'firebase/firestore'
@@ -11,10 +11,12 @@ type AssetsContextType = {
   loadingAssets: boolean
   uploadingAsset: boolean
   uploadAssetFile: (file: File, assetData: CreateAssetData) => Promise<void>
+  uploadGlobalMusic: (file: File, assetData: Omit<CreateAssetData, 'type'>) => Promise<void>
   deleteAssetById: (assetId: string) => Promise<void>
   refreshAssets: () => void
   getAssetsByType: (type: AssetType) => Asset[]
   getTotalAssetsCount: () => number
+  getGlobalMusicCount: () => number
 }
 
 const AssetsContext = createContext<AssetsContextType | undefined>(undefined)
@@ -46,12 +48,12 @@ export function AssetsProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
-    console.log('🔄 Fetching assets for:', { userId: user.uid, projectId: currentProject.id })
+    console.log('🔄 Fetching combined assets for:', { userId: user.uid, projectId: currentProject.id })
     setLoadingAssets(true)
     try {
-      const projectAssets = await getProjectAssets(user.uid, currentProject.id)
-      console.log('✅ Assets fetched:', projectAssets)
-      setAssets(projectAssets)
+      const combinedAssets = await getCombinedAssets(user.uid, currentProject.id)
+      console.log('✅ Combined assets fetched:', combinedAssets)
+      setAssets(combinedAssets)
     } catch (error) {
       console.error('❌ Failed to fetch assets:', error)
       setAssets({
@@ -130,6 +132,27 @@ export function AssetsProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const uploadGlobalMusic = async (file: File, assetData: Omit<CreateAssetData, 'type'>) => {
+    if (!user) {
+      throw new Error('User not available')
+    }
+
+    setUploadingAsset(true)
+    try {
+      await uploadGlobalMusicAsset(user.uid, file, assetData)
+      console.log('Global music uploaded successfully')
+      // Refresh assets to show the new global music
+      if (currentProject) {
+        fetchAssets()
+      }
+    } catch (error) {
+      console.error('Failed to upload global music:', error)
+      throw error
+    } finally {
+      setUploadingAsset(false)
+    }
+  }
+
   const deleteAssetById = async (assetId: string) => {
     try {
       await deleteAsset(assetId)
@@ -152,6 +175,11 @@ export function AssetsProvider({ children }: { children: React.ReactNode }) {
     return Object.values(assets).reduce((total, typeAssets) => total + typeAssets.length, 0)
   }
 
+  const getGlobalMusicCount = (): number => {
+    // Count music assets that have null projectId (global assets)
+    return assets.music?.filter(asset => asset.projectId === null).length || 0
+  }
+
   const allAssets = Object.values(assets).flat()
 
   return (
@@ -162,10 +190,12 @@ export function AssetsProvider({ children }: { children: React.ReactNode }) {
         loadingAssets,
         uploadingAsset,
         uploadAssetFile,
+        uploadGlobalMusic,
         deleteAssetById,
         refreshAssets,
         getAssetsByType,
-        getTotalAssetsCount
+        getTotalAssetsCount,
+        getGlobalMusicCount
       }}
     >
       {children}

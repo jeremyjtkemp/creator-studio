@@ -7,6 +7,7 @@ import { useProjects } from '@/lib/project-context'
 import { useAssets } from '@/lib/assets-context'
 import { AssetType, formatFileSize, formatDuration } from '@/lib/assets'
 import { MigrateAssetsButton } from '@/components/MigrateAssetsButton'
+import { MusicUpload } from '@/components/MusicUpload'
 import { 
   Upload, 
   FolderOpen,
@@ -47,10 +48,12 @@ const assetTypeConfig: Record<AssetType, { icon: React.ComponentType<any>, label
 
 export function AssetLibrary() {
   const { projects, currentProject } = useProjects()
-  const { assets, allAssets, loadingAssets, deleteAssetById, getTotalAssetsCount } = useAssets()
+  const { assets, allAssets, loadingAssets, deleteAssetById, getTotalAssetsCount, getGlobalMusicCount } = useAssets()
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [selectedType, setSelectedType] = useState<AssetType | 'all'>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [showMusicUpload, setShowMusicUpload] = useState(false)
+  const [deletingAsset, setDeletingAsset] = useState<string | null>(null)
 
   // Filter assets based on type and search
   const filteredAssets = allAssets.filter(asset => {
@@ -62,15 +65,23 @@ export function AssetLibrary() {
   })
 
   const handleDelete = async (assetId: string, assetName: string) => {
-    if (!confirm(`Are you sure you want to delete "${assetName}"?`)) {
+    // Enhanced confirmation dialog
+    const confirmMessage = `⚠️ Delete "${assetName}"?\n\nThis will permanently delete:\n• The file from storage\n• All metadata\n• This cannot be undone\n\nContinue?`
+    
+    if (!confirm(confirmMessage)) {
       return
     }
     
+    setDeletingAsset(assetId)
     try {
+      console.log('🗑️ Starting asset deletion process...')
       await deleteAssetById(assetId)
+      console.log('✅ Asset deletion completed successfully')
     } catch (error) {
-      console.error('Failed to delete asset:', error)
-      alert('Failed to delete asset. Please try again.')
+      console.error('❌ Failed to delete asset:', error)
+      alert(`Failed to delete "${assetName}". Please try again.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setDeletingAsset(null)
     }
   }
 
@@ -85,6 +96,7 @@ export function AssetLibrary() {
   }
 
   const totalAssets = getTotalAssetsCount()
+  const globalMusicCount = getGlobalMusicCount()
 
   return (
     <div className="h-full flex flex-col">
@@ -95,13 +107,20 @@ export function AssetLibrary() {
             <h1 className="text-2xl font-semibold">Asset Library</h1>
             <p className="text-muted-foreground">
               {totalAssets > 0 
-                ? `${totalAssets} assets in ${currentProject.name}`
+                ? `${totalAssets} assets in ${currentProject.name} • ${globalMusicCount} global music tracks`
                 : `Manage assets for ${currentProject.name}`
               }
             </p>
           </div>
           <div className="flex items-center space-x-2">
             <MigrateAssetsButton />
+            <Button 
+              variant="outline"
+              onClick={() => setShowMusicUpload(!showMusicUpload)}
+            >
+              <Music className="w-4 h-4 mr-2" />
+              {showMusicUpload ? 'Hide Music Upload' : 'Upload Music'}
+            </Button>
             <Button variant="outline" disabled>
               <FolderOpen className="w-4 h-4 mr-2" />
               Sync Drive
@@ -113,6 +132,13 @@ export function AssetLibrary() {
           </div>
         </div>
       </div>
+
+      {/* Music Upload Panel */}
+      {showMusicUpload && (
+        <div className="border-b border-border p-6 bg-muted/30">
+          <MusicUpload onUploadComplete={() => setShowMusicUpload(false)} />
+        </div>
+      )}
 
       {totalAssets === 0 ? (
         <AssetLibraryEmptyState />
@@ -192,13 +218,13 @@ export function AssetLibrary() {
             ) : viewMode === 'grid' ? (
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                 {filteredAssets.map((asset) => (
-                  <AssetGridItem key={asset.id} asset={asset} onDelete={handleDelete} />
+                  <AssetGridItem key={asset.id} asset={asset} onDelete={handleDelete} isDeleting={deletingAsset === asset.id} />
                 ))}
               </div>
             ) : (
               <div className="space-y-2">
                 {filteredAssets.map((asset) => (
-                  <AssetListItem key={asset.id} asset={asset} onDelete={handleDelete} />
+                  <AssetListItem key={asset.id} asset={asset} onDelete={handleDelete} isDeleting={deletingAsset === asset.id} />
                 ))}
               </div>
             )}
@@ -210,13 +236,23 @@ export function AssetLibrary() {
 }
 
 // Asset Grid Item Component
-function AssetGridItem({ asset, onDelete }: { asset: any, onDelete: (id: string, name: string) => void }) {
+function AssetGridItem({ asset, onDelete, isDeleting }: { asset: any, onDelete: (id: string, name: string) => void, isDeleting?: boolean }) {
   const config = assetTypeConfig[asset.type] || assetTypeConfig.other
   const IconComponent = config.icon
 
   return (
-    <Card className="group relative overflow-hidden">
+    <Card className={`group relative overflow-hidden ${isDeleting ? 'opacity-50 pointer-events-none' : ''}`}>
       <CardContent className="p-0 aspect-square relative">
+        {/* Deletion overlay */}
+        {isDeleting && (
+          <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-20">
+            <div className="text-center text-white">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
+              <p className="text-sm">Deleting...</p>
+            </div>
+          </div>
+        )}
+        
         {/* Thumbnail */}
         <div className="w-full h-full bg-black relative">
           {asset.thumbnailUrl ? (
@@ -244,10 +280,15 @@ function AssetGridItem({ asset, onDelete }: { asset: any, onDelete: (id: string,
           </div>
 
           {/* Type Badge */}
-          <div className="absolute top-2 left-2">
+          <div className="absolute top-2 left-2 space-y-1">
             <Badge variant="secondary" className="text-xs">
               {config.label}
             </Badge>
+            {asset.type === 'music' && asset.projectId === null && (
+              <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-400 border-blue-400">
+                Global
+              </Badge>
+            )}
           </div>
 
           {/* Duration Badge */}
@@ -298,7 +339,7 @@ function AssetGridItem({ asset, onDelete }: { asset: any, onDelete: (id: string,
           <h4 className="text-white text-sm font-medium truncate mb-1">
             {asset.name}
           </h4>
-          <div className="flex items-center justify-between text-xs text-white/80">
+          <div className="flex items-center justify-between text-xs text-white/80 mb-1">
             <span>{formatFileSize(asset.fileSize)}</span>
             <span>
               {asset.createdAt?.toDate ? 
@@ -307,6 +348,21 @@ function AssetGridItem({ asset, onDelete }: { asset: any, onDelete: (id: string,
               }
             </span>
           </div>
+          {/* Music Metadata */}
+          {asset.type === 'music' && asset.metadata && (
+            <div className="flex items-center space-x-2 text-xs text-white/60">
+              {asset.metadata.energy && (
+                <Badge variant="outline" className="text-xs bg-black/50 text-white/80 border-white/30">
+                  {asset.metadata.energy}
+                </Badge>
+              )}
+              {asset.metadata.mood && (
+                <Badge variant="outline" className="text-xs bg-black/50 text-white/80 border-white/30">
+                  {asset.metadata.mood}
+                </Badge>
+              )}
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -314,13 +370,23 @@ function AssetGridItem({ asset, onDelete }: { asset: any, onDelete: (id: string,
 }
 
 // Asset List Item Component
-function AssetListItem({ asset, onDelete }: { asset: any, onDelete: (id: string, name: string) => void }) {
+function AssetListItem({ asset, onDelete, isDeleting }: { asset: any, onDelete: (id: string, name: string) => void, isDeleting?: boolean }) {
   const config = assetTypeConfig[asset.type] || assetTypeConfig.other
   const IconComponent = config.icon
 
   return (
-    <Card className="hover:bg-muted/50 transition-colors">
-      <CardContent className="p-4">
+    <Card className={`hover:bg-muted/50 transition-colors ${isDeleting ? 'opacity-50 pointer-events-none' : ''}`}>
+      <CardContent className="p-4 relative">
+        {/* Deletion overlay */}
+        {isDeleting && (
+          <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+            <div className="flex items-center space-x-2 text-muted-foreground">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
+              <span className="text-sm">Deleting...</span>
+            </div>
+          </div>
+        )}
+        
         <div className="flex items-center space-x-4">
           {/* Thumbnail */}
           <div className="w-16 h-16 rounded-lg overflow-hidden bg-muted flex items-center justify-center">
@@ -337,9 +403,16 @@ function AssetListItem({ asset, onDelete }: { asset: any, onDelete: (id: string,
 
           {/* Info */}
           <div className="flex-1 min-w-0">
-            <h4 className="font-medium truncate">{asset.name}</h4>
+            <div className="flex items-center space-x-2">
+              <h4 className="font-medium truncate">{asset.name}</h4>
+              {asset.type === 'music' && asset.projectId === null && (
+                <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-600 border-blue-400">
+                  Global
+                </Badge>
+              )}
+            </div>
             <p className="text-sm text-muted-foreground truncate">{asset.fileName}</p>
-            <div className="flex items-center space-x-4 mt-1">
+            <div className="flex items-center flex-wrap gap-2 mt-1">
               <Badge variant="outline" className="text-xs">
                 {config.label}
               </Badge>
@@ -357,6 +430,26 @@ function AssetListItem({ asset, onDelete }: { asset: any, onDelete: (id: string,
                   'Unknown'
                 }
               </span>
+              {/* Music Metadata */}
+              {asset.type === 'music' && asset.metadata && (
+                <>
+                  {asset.metadata.energy && (
+                    <Badge variant="secondary" className="text-xs">
+                      {asset.metadata.energy}
+                    </Badge>
+                  )}
+                  {asset.metadata.mood && (
+                    <Badge variant="secondary" className="text-xs">
+                      {asset.metadata.mood}
+                    </Badge>
+                  )}
+                  {asset.metadata.genre && (
+                    <Badge variant="secondary" className="text-xs">
+                      {asset.metadata.genre}
+                    </Badge>
+                  )}
+                </>
+              )}
             </div>
           </div>
 

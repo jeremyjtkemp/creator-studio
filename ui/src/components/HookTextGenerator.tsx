@@ -2,8 +2,11 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { useProjects } from '@/lib/project-context'
 import { useAuth } from '@/lib/auth-context'
+import { useVideoComposition } from '@/lib/video-composition-context'
 import { api, GeneratedHook } from '@/lib/serverComm'
 import { getProjectHooks, saveProjectHooks, ProjectHook } from '@/lib/hooks'
 import { 
@@ -63,12 +66,14 @@ const mockHooks: GeneratedHook[] = [
 export function HookTextGenerator() {
   const { currentProject } = useProjects()
   const { user } = useAuth()
+  const { composition, updateHookText } = useVideoComposition()
   const [hooks, setHooks] = useState<ProjectHook[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [selectedHook, setSelectedHook] = useState<ProjectHook | null>(null)
+  const [customText, setCustomText] = useState('')
 
   // Load hooks when project changes
   useEffect(() => {
@@ -219,6 +224,33 @@ export function HookTextGenerator() {
           </div>
         )}
 
+        {/* Custom Hook Text Input */}
+        <div className="border-b pb-4">
+          <Label htmlFor="custom-hook" className="text-sm font-medium">Custom Hook Text</Label>
+          <div className="flex space-x-2 mt-2">
+            <Input
+              id="custom-hook"
+              value={customText}
+              onChange={(e) => setCustomText(e.target.value)}
+              placeholder="Type your own hook text..."
+              className="flex-1"
+            />
+            <Button 
+              onClick={() => {
+                if (customText.trim()) {
+                  updateHookText({ text: customText.trim() })
+                  console.log('🎯 Set custom hook text:', customText.trim())
+                  setCustomText('')
+                }
+              }}
+              disabled={!customText.trim()}
+              size="sm"
+            >
+              Use
+            </Button>
+          </div>
+        </div>
+
         {/* Hook List */}
         <div className="flex-1 overflow-y-auto space-y-3">
           {isLoading ? (
@@ -235,7 +267,7 @@ export function HookTextGenerator() {
           ) : (
             hooks.map((hook, i) => {
             const CategoryIcon = categoryIcons[hook.category as keyof typeof categoryIcons]
-            const isSelected = selectedHook?.text === hook.text
+            const isSelected = composition?.hookText.text === hook.text
             
             return (
               <div 
@@ -243,7 +275,12 @@ export function HookTextGenerator() {
                 className={`p-3 border rounded-lg cursor-pointer transition-all hover:shadow-sm ${
                   isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-secondary'
                 }`}
-                onClick={() => setSelectedHook(hook)}
+                onClick={() => {
+                  setSelectedHook(hook)
+                  // Update the video composition with the selected hook text
+                  updateHookText({ text: hook.text })
+                  console.log('🎯 Selected hook text:', hook.text)
+                }}
               >
                 <p className="text-sm font-medium mb-2">{hook.text}</p>
                 <div className="flex items-center justify-between">
@@ -285,17 +322,20 @@ export function HookTextGenerator() {
         </div>
 
         {/* Selected Hook Preview */}
-        {selectedHook && (
+        {composition?.hookText.text && (
           <div className="border-t pt-4">
             <div className="text-sm text-muted-foreground mb-2">Selected Hook:</div>
             <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
-              <p className="font-medium text-sm">{selectedHook.text}</p>
+              <p className="font-medium text-sm">{composition.hookText.text}</p>
               <div className="flex items-center justify-between mt-2">
                 <Badge variant="outline" className="text-xs">
-                  {selectedHook.category}
+                  {(() => {
+                    const matchingHook = hooks.find(h => h.text === composition.hookText.text)
+                    return matchingHook?.category || 'custom'
+                  })()}
                 </Badge>
                 <div className="text-xs text-muted-foreground">
-                  {selectedHook.estimatedEngagement} engagement • {selectedHook.viralityScore} virality
+                  Position: {composition.hookText.position} • Size: {composition.hookText.fontSize} • Duration: {composition.hookText.duration}s
                 </div>
               </div>
             </div>

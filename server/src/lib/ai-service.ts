@@ -14,6 +14,14 @@ export interface GeneratedHook {
   variations: number;
 }
 
+export interface GeneratedDemoScript {
+  script: string;
+  category: string;
+  tone: string;
+  duration: number; // estimated seconds
+  wordCount: number;
+}
+
 export async function generateAIHooks(
   appDescription: string,
   projectName?: string,
@@ -229,4 +237,101 @@ function inferAppType(description: string): string {
   if (desc.includes('photo') || desc.includes('camera') || desc.includes('image') || desc.includes('video editing')) return 'photo app';
   if (desc.includes('game') || desc.includes('gaming') || desc.includes('puzzle') || desc.includes('entertainment')) return 'gaming app';
   return 'app';
+}
+
+export async function generateDemoScripts(
+  projectName: string,
+  projectDescription: string,
+  category: string,
+  tone: string,
+  scriptCount: number = 5
+): Promise<string[]> {
+  try {
+    console.log('🤖 Generating demo scripts with OpenAI...');
+    console.log('📱 App:', projectName);
+    console.log('📝 Category:', category, '| Tone:', tone);
+    console.log('🔑 OpenAI API Key configured:', !!process.env.OPENAI_API_KEY || !!getEnv('OPENAI_API_KEY'));
+
+    const prompt = `
+Generate ${scriptCount} demo scripts for a mobile app called "${projectName}" with this description:
+"${projectDescription}"
+
+Category: ${category}
+Tone: ${tone}
+
+Create scripts that would be perfect for narrating a demo video showing the app in action. Each script should:
+
+Requirements:
+- Be very short: 8-12 seconds when spoken (approximately 20-30 words)
+- Match the "${tone}" tone throughout
+- Focus on "${category}" content
+- Use active voice and present tense
+- Include one key feature or benefit
+- Be conversational and engaging for video narration
+- Be concise and impactful - just a few sentences
+- Perfect for short-form content
+- Avoid overly technical jargon
+- Create excitement about the app's value
+
+Structure each script as:
+- Quick feature highlight with immediate benefit
+- 2-3 sentences maximum
+- Focus on one key point per script
+- Natural flow for voiceover narration
+
+Return ONLY a JSON array of ${scriptCount} script strings, no additional formatting:
+["script 1 text here...", "script 2 text here...", ...]
+`;
+
+    console.log('🔄 Making OpenAI API request...');
+    
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini', // Using the same model as hook generation
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a professional video script writer specializing in mobile app demos. Generate engaging, conversational scripts perfect for voice-over narration.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0.8,
+      max_tokens: 800, // Reduced since we want much shorter scripts
+    });
+
+    console.log('✅ OpenAI API response received');
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      console.error('❌ No content in OpenAI response:', response);
+      throw new Error('No content received from OpenAI');
+    }
+
+    console.log('📝 Raw OpenAI response preview:', content.substring(0, 200) + '...');
+
+    // Parse the JSON response
+    let scripts;
+    try {
+      scripts = JSON.parse(content.trim());
+    } catch (parseError) {
+      console.error('❌ JSON parse error:', parseError);
+      console.error('❌ Raw content that failed to parse:', content);
+      throw new Error(`Failed to parse OpenAI response as JSON: ${parseError.message}`);
+    }
+    
+    if (!Array.isArray(scripts)) {
+      console.error('❌ Response is not an array:', scripts);
+      throw new Error('Response is not an array');
+    }
+
+    console.log('✅ Generated', scripts.length, 'demo scripts');
+    
+    return scripts.map(script => script.trim()).filter(script => script.length > 0);
+
+  } catch (error: any) {
+    console.error('❌ OpenAI Demo Scripts Error:', error);
+    throw new Error('Failed to generate demo scripts: ' + error.message);
+  }
 }

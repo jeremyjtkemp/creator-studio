@@ -54,6 +54,24 @@ export interface GeneratedHook {
   variations: number;
 }
 
+// Type definitions for demo script generation
+export interface GenerateDemoScriptsRequest {
+  projectName: string;
+  projectDescription: string;
+  category: string;
+  tone: string;
+  count?: number;
+}
+
+export interface GenerateDemoScriptsResponse {
+  scripts: string[];
+  generated: number;
+  category: string;
+  tone: string;
+  timestamp: string;
+  success: boolean;
+}
+
 export interface GenerateHooksRequest {
   appDescription: string;
   projectName?: string;
@@ -86,6 +104,17 @@ export async function generateHooks(data: GenerateHooksRequest): Promise<Generat
   return response.json();
 }
 
+export async function generateDemoScripts(data: GenerateDemoScriptsRequest): Promise<GenerateDemoScriptsResponse> {
+  const response = await fetchWithAuth('/api/v1/protected/demo-scripts/generate', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+  return response.json();
+}
+
 // Example of how to add more API endpoints:
 // export async function createChat(data: CreateChatData) {
 //   const response = await fetchWithAuth('/api/v1/protected/chats', {
@@ -101,5 +130,6 @@ export async function generateHooks(data: GenerateHooksRequest): Promise<Generat
 export const api = {
   getCurrentUser,
   generateHooks,
+  generateDemoScripts,
   // Add other API endpoints here
 }; 

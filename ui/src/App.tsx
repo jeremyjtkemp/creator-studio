@@ -2,6 +2,7 @@ import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { ProjectProvider } from '@/lib/project-context';
 import { HookVisualsProvider } from '@/lib/hook-visuals-context';
 import { AssetsProvider } from '@/lib/assets-context';
+import { VideoCompositionProvider } from '@/lib/video-composition-context';
 import { ThemeProvider } from "@/components/theme-provider";
 import { LoginForm } from '@/components/login-form';
 import { Navbar } from '@/components/navbar';
@@ -36,20 +37,22 @@ function AppContent() {
           <ProjectProvider>
             <HookVisualsProvider>
               <AssetsProvider>
-                <div className="flex flex-1">
-                  <AppSidebar />
-                  <SidebarInset className="flex-1">
-                    <main className="flex-1">
-                      <Routes>
-                        <Route path="/" element={<VideoCreator />} />
-                        <Route path="/assets" element={<AssetLibrary />} />
-                        <Route path="/analytics" element={<Analytics />} />
-                        <Route path="/archive" element={<Archive />} />
-                        <Route path="/settings" element={<Settings />} />
-                      </Routes>
-                    </main>
-                  </SidebarInset>
-                </div>
+                <VideoCompositionProvider>
+                  <div className="flex flex-1">
+                    <AppSidebar />
+                    <SidebarInset className="flex-1">
+                      <main className="flex-1">
+                        <Routes>
+                          <Route path="/" element={<VideoCreator />} />
+                          <Route path="/assets" element={<AssetLibrary />} />
+                          <Route path="/analytics" element={<Analytics />} />
+                          <Route path="/archive" element={<Archive />} />
+                          <Route path="/settings" element={<Settings />} />
+                        </Routes>
+                      </main>
+                    </SidebarInset>
+                  </div>
+                </VideoCompositionProvider>
               </AssetsProvider>
             </HookVisualsProvider>
           </ProjectProvider>

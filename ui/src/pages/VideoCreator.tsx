@@ -1,13 +1,21 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { Progress } from '@/components/ui/progress'
 import { useProjects } from '@/lib/project-context'
+import { useAssets } from '@/lib/assets-context'
+import { useVideoComposition } from '@/lib/video-composition-context'
+import { formatDuration } from '@/lib/assets'
 import { HookVisualUpload } from '@/components/HookVisualUpload'
 import { HookVisualGrid } from '@/components/HookVisualGrid'
 import { HookTextGenerator } from '@/components/HookTextGenerator'
+import { DemoClipsUpload } from '@/components/DemoClipsUpload'
+import { DemoClipsGrid } from '@/components/DemoClipsGrid'
+import { DemoTimeline } from '@/components/DemoTimeline'
+import { DemoScriptGenerator } from '@/components/DemoScriptGenerator'
+import { VideoExport } from '@/components/VideoExport'
 import { 
   Plus, 
   Sparkles, 
@@ -18,9 +26,6 @@ import {
   Upload,
   Wand2,
   Play,
-  Pause,
-  RotateCcw,
-  Copy,
   Type,
   Settings
 } from 'lucide-react'
@@ -34,9 +39,116 @@ const steps = [
 
 export function VideoCreator() {
   const { projects, currentProject, setCreateProjectModalOpen } = useProjects()
+  const { assets, getAssetsByType } = useAssets()
+  const { 
+    composition, 
+    updateHookText, 
+    updateDemoClips, 
+    updateBackgroundMusic,
+    getCompositionSummary 
+  } = useVideoComposition()
   const [currentStep, setCurrentStep] = useState('hook')
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [progress] = useState(65)
+  const [selectedMusic, setSelectedMusic] = useState<string | null>(null)
+  const [selectedDemoClips, setSelectedDemoClips] = useState<string[]>([])
+  const [exportProgress, setExportProgress] = useState(0)
+
+  // Get music assets (includes global music)
+  const musicAssets = getAssetsByType('music')
+  
+  // Get demo video assets
+  const demoClips = getAssetsByType('demo-video')
+  
+  // Get hook visual assets
+  const hookVisuals = getAssetsByType('hook-visual')
+
+  // Handle demo clip selection
+  const handleDemoClipSelect = (clipId: string) => {
+    if (selectedDemoClips.includes(clipId)) {
+      // Remove if already selected
+      setSelectedDemoClips(prev => prev.filter(id => id !== clipId))
+    } else {
+      // Add to selection
+      setSelectedDemoClips(prev => [...prev, clipId])
+    }
+  }
+
+  // Handle clip removal from timeline
+  const handleClipRemove = (clipId: string) => {
+    setSelectedDemoClips(prev => prev.filter(id => id !== clipId))
+  }
+
+  // Handle music selection
+  const handleMusicSelect = (musicId: string) => {
+    setSelectedMusic(musicId)
+    const selectedMusicAsset = musicAssets.find(asset => asset.id === musicId)
+    if (selectedMusicAsset) {
+      updateBackgroundMusic(selectedMusicAsset, {
+        volume: 40, // Lower default volume to not overpower voiceover
+        startTime: 0,
+        fadeIn: 1,
+        fadeOut: 1
+      })
+    }
+  }
+
+  // Handle music volume change
+  const handleVolumeChange = (volume: number) => {
+    if (composition?.backgroundMusic) {
+      updateBackgroundMusic(composition.backgroundMusic.asset, {
+        ...composition.backgroundMusic.settings,
+        volume
+      })
+    }
+  }
+
+  // Calculate dynamic progress based on current step and completion
+  const calculateProgress = () => {
+    const baseProgress = {
+      'hook': 25,
+      'demo': 50,
+      'music': 75,
+      'export': 95
+    }
+    
+    let currentProgress = baseProgress[currentStep as keyof typeof baseProgress] || 25
+    
+    // Add export progress if on export step
+    if (currentStep === 'export' && exportProgress > 0) {
+      currentProgress = 95 + (exportProgress * 0.05) // 95% + up to 5% for export completion
+    }
+    
+    return Math.min(100, currentProgress)
+  }
+
+  const progress = calculateProgress()
+
+  // Reset export progress when switching away from export tab
+  React.useEffect(() => {
+    if (currentStep !== 'export') {
+      setExportProgress(0)
+    }
+  }, [currentStep])
+
+  // Update video composition when demo clips change
+  React.useEffect(() => {
+    const clips = selectedDemoClips.map((clipId, index) => {
+      const asset = demoClips.find(clip => clip.id === clipId)
+      if (!asset) return null
+      
+      const startTime = index * (asset.duration || 5) // Sequential timing
+      return {
+        asset,
+        startTime,
+        duration: asset.duration || 5,
+        order: index
+      }
+    }).filter(Boolean) as any[]
+    
+    updateDemoClips(clips)
+  }, [selectedDemoClips, demoClips, updateDemoClips])
+
+  // Get composition summary for progress calculation
+  const compositionSummary = getCompositionSummary()
 
   // Show welcome screen if no projects exist
   if (projects.length === 0) {
@@ -55,22 +167,9 @@ export function VideoCreator() {
       <div className="flex-1 flex flex-col">
         {/* Header */}
         <div className="border-b border-border p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold">Video Creator</h1>
-              <p className="text-muted-foreground">Create viral TikTok-style videos for {currentProject.name}</p>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Badge variant="secondary">Draft</Badge>
-              <Button variant="outline" size="sm">
-                <Copy className="w-4 h-4 mr-2" />
-                Duplicate
-              </Button>
-              <Button size="sm">
-                <Download className="w-4 h-4 mr-2" />
-                Export
-              </Button>
-            </div>
+          <div>
+            <h1 className="text-2xl font-semibold">Video Creator</h1>
+            <p className="text-muted-foreground">Create viral TikTok-style videos for {currentProject.name}</p>
           </div>
         </div>
 
@@ -106,13 +205,18 @@ export function VideoCreator() {
         <div className="flex-1 p-6">
           <Tabs value={currentStep} onValueChange={setCurrentStep} className="h-full">
             <TabsContent value="hook" className="h-full">
-              <div className="grid grid-cols-3 gap-6 h-full">
-                {/* Hook Visual Selection */}
+              <div className="grid grid-cols-2 gap-6 h-full">
+                {/* Hook Visuals - Left Column */}
                 <Card className="flex flex-col">
                   <CardHeader>
-                    <CardTitle className="flex items-center space-x-2">
-                      <Image className="w-5 h-5" />
-                      <span>Hook Visuals</span>
+                    <CardTitle className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <Image className="w-5 h-5" />
+                        <span>Hook Visuals</span>
+                      </div>
+                      <Badge variant="outline" className="text-xs">
+                        {hookVisuals.length} clips
+                      </Badge>
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="flex-1 flex flex-col space-y-4">
@@ -123,94 +227,85 @@ export function VideoCreator() {
                     <div className="flex-1">
                       <HookVisualGrid />
                     </div>
+                    
+                    {/* Selected Visual Summary */}
+                    {composition?.hookVideo && (
+                      <div className="border-t pt-4">
+                        <h4 className="font-medium mb-2">Selected Hook Visual</h4>
+                        <div className="flex items-center justify-between text-sm">
+                          <span>{hookVisuals.find(h => h.id === composition.hookVideo?.id)?.name || 'Unknown clip'}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => updateHookVideo(null)}
+                            className="h-6 w-6 p-0"
+                          >
+                            ×
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
-                {/* Hook Text Generator */}
+                {/* Hook Text Generator - Right Column */}
                 <HookTextGenerator />
-
-                {/* Text Customization */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center space-x-2">
-                      <Settings className="w-5 h-5" />
-                      <span>Customize</span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="text-sm font-medium">Text Size</label>
-                        <div className="flex space-x-2 mt-2">
-                          {['S', 'M', 'L', 'XL'].map((size) => (
-                            <Button key={size} variant="outline" size="sm" className="w-10">
-                              {size}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium">Position</label>
-                        <div className="grid grid-cols-2 gap-2 mt-2">
-                          {['Top', 'Middle', 'Bottom', 'Custom'].map((pos) => (
-                            <Button key={pos} variant="outline" size="sm">
-                              {pos}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium">Duration</label>
-                        <div className="flex items-center space-x-2 mt-2">
-                          <input 
-                            type="range" 
-                            min="3" 
-                            max="10" 
-                            defaultValue="5" 
-                            className="flex-1"
-                          />
-                          <span className="text-sm text-muted-foreground">5s</span>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
               </div>
             </TabsContent>
 
             <TabsContent value="demo" className="h-full">
               <div className="grid grid-cols-2 gap-6 h-full">
-                <Card>
+                {/* Demo Clips - Left Column */}
+                <Card className="flex flex-col">
                   <CardHeader>
-                    <CardTitle>Demo Clips</CardTitle>
+                    <CardTitle className="flex items-center justify-between">
+                      <span>Demo Clips</span>
+                      <Badge variant="outline" className="text-xs">
+                        {demoClips.length} clips
+                      </Badge>
+                    </CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <div className="text-center py-12 text-muted-foreground">
-                      <Image className="w-12 h-12 mx-auto mb-4" />
-                      <p>Upload demo clips or select from library</p>
-                      <Button className="mt-4">Upload Clips</Button>
+                  <CardContent className="flex-1 flex flex-col space-y-4">
+                    {/* Upload Section */}
+                    <DemoClipsUpload />
+                    
+                    {/* Clips Grid */}
+                    <div className="flex-1">
+                      <DemoClipsGrid 
+                        onClipSelect={handleDemoClipSelect}
+                        selectedClips={selectedDemoClips}
+                      />
                     </div>
+                    
+                    {/* Selected Clips Summary */}
+                    {selectedDemoClips.length > 0 && (
+                      <div className="border-t pt-4">
+                        <h4 className="font-medium mb-2">Selected Clips ({selectedDemoClips.length})</h4>
+                        <div className="space-y-2">
+                          {selectedDemoClips.map((clipId, index) => {
+                            const clip = demoClips.find(c => c.id === clipId)
+                            return clip ? (
+                              <div key={clipId} className="flex items-center justify-between text-sm">
+                                <span>{index + 1}. {clip.name}</span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleClipRemove(clipId)}
+                                  className="h-6 w-6 p-0"
+                                >
+                                  ×
+                                </Button>
+                              </div>
+                            ) : null
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Timeline</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {[1, 2, 3].map((i) => (
-                        <div key={i} className="flex items-center space-x-3 p-3 border rounded-lg">
-                          <div className="w-16 h-9 bg-secondary rounded"></div>
-                          <div className="flex-1">
-                            <p className="text-sm font-medium">Clip {i}</p>
-                            <p className="text-xs text-muted-foreground">3.2s</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
+                {/* Demo Scripts - Right Column */}
+                <DemoScriptGenerator />
               </div>
             </TabsContent>
 
@@ -218,30 +313,70 @@ export function VideoCreator() {
               <div className="grid grid-cols-2 gap-6 h-full">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Music Library</CardTitle>
+                    <CardTitle className="flex items-center justify-between">
+                      <span>Music Library</span>
+                      <Badge variant="outline" className="text-xs">
+                        {musicAssets.length} tracks
+                      </Badge>
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-3">
-                      {[
-                        { name: "Upbeat Workout", energy: "High", duration: "2:14" },
-                        { name: "Motivational Rock", energy: "High", duration: "1:58" },
-                        { name: "Electronic Vibes", energy: "Medium", duration: "2:45" },
-                        { name: "Ambient Focus", energy: "Low", duration: "3:12" },
-                      ].map((track, i) => (
-                        <div key={i} className="flex items-center space-x-3 p-3 border rounded-lg">
-                          <Button variant="ghost" size="sm">
-                            <Play className="w-4 h-4" />
-                          </Button>
-                          <div className="flex-1">
-                            <p className="text-sm font-medium">{track.name}</p>
-                            <div className="flex items-center space-x-2 mt-1">
-                              <Badge variant="outline" className="text-xs">{track.energy}</Badge>
-                              <span className="text-xs text-muted-foreground">{track.duration}</span>
+                    {musicAssets.length === 0 ? (
+                      <div className="text-center py-12 text-muted-foreground">
+                        <Music className="w-12 h-12 mx-auto mb-4" />
+                        <p className="mb-2">No music in your library</p>
+                        <p className="text-xs">Go to Asset Library to upload music</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 max-h-96 overflow-y-auto">
+                        {musicAssets.map((track) => (
+                          <div 
+                            key={track.id} 
+                            className={`flex items-center space-x-3 p-3 border rounded-lg cursor-pointer transition-colors hover:bg-secondary ${
+                              selectedMusic === track.id ? 'ring-2 ring-primary bg-primary/5' : ''
+                            }`}
+                            onClick={() => handleMusicSelect(track.id)}
+                          >
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                // TODO: Implement audio preview
+                                window.open(track.downloadUrl, '_blank')
+                              }}
+                            >
+                              <Play className="w-4 h-4" />
+                            </Button>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center space-x-2">
+                                <p className="text-sm font-medium truncate">{track.name}</p>
+                                {track.projectId === null && (
+                                  <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-600 border-blue-400">
+                                    Global
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center space-x-2 mt-1">
+                                {track.metadata?.energy && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {track.metadata.energy}
+                                  </Badge>
+                                )}
+                                {track.metadata?.mood && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    {track.metadata.mood}
+                                  </Badge>
+                                )}
+                                <span className="text-xs text-muted-foreground">
+                                  {formatDuration(track.duration)}
+                                </span>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -250,103 +385,109 @@ export function VideoCreator() {
                     <CardTitle>Audio Settings</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="text-sm font-medium">Volume</label>
-                        <input type="range" className="w-full mt-2" defaultValue="75" />
+                    {selectedMusic ? (
+                      (() => {
+                        const selectedTrack = musicAssets.find(track => track.id === selectedMusic)
+                        return selectedTrack ? (
+                          <div className="space-y-4">
+                            {/* Selected Track Info */}
+                            <div className="p-3 bg-secondary/50 rounded-lg">
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="font-medium text-sm">{selectedTrack.name}</p>
+                                <Badge variant="outline" className="text-xs">
+                                  {formatDuration(selectedTrack.duration)}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                {selectedTrack.metadata?.energy && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    {selectedTrack.metadata.energy}
+                                  </Badge>
+                                )}
+                                {selectedTrack.metadata?.mood && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    {selectedTrack.metadata.mood}
+                                  </Badge>
+                                )}
+                                {selectedTrack.metadata?.genre && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    {selectedTrack.metadata.genre}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Audio Controls */}
+                            <div>
+                              <label className="text-sm font-medium">Volume</label>
+                              <input 
+                                type="range" 
+                                className="w-full mt-2" 
+                                min="0" 
+                                max="100" 
+                                value={composition?.backgroundMusic?.settings.volume || 40}
+                                onChange={(e) => handleVolumeChange(parseInt(e.target.value))}
+                              />
+                              <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                                <span>0%</span>
+                                <span>{composition?.backgroundMusic?.settings.volume || 40}%</span>
+                                <span>100%</span>
+                              </div>
+                            </div>
+                            <div>
+                              <label className="text-sm font-medium">Start Time</label>
+                              <input 
+                                type="text" 
+                                placeholder="00:00" 
+                                className="w-full mt-2 px-3 py-2 border rounded" 
+                              />
+                              <p className="text-xs text-muted-foreground mt-1">
+                                When to start playing this music in the video
+                              </p>
+                            </div>
+                            <div>
+                              <label className="text-sm font-medium">Fade In/Out</label>
+                              <div className="grid grid-cols-2 gap-2 mt-2">
+                                <input 
+                                  type="number" 
+                                  placeholder="Fade in (s)"
+                                  className="px-3 py-2 border rounded text-sm"
+                                  min="0"
+                                  max="5"
+                                  step="0.1"
+                                />
+                                <input 
+                                  type="number" 
+                                  placeholder="Fade out (s)"
+                                  className="px-3 py-2 border rounded text-sm"
+                                  min="0"
+                                  max="5"
+                                  step="0.1"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ) : null
+                      })()
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Music className="w-8 h-8 mx-auto mb-3" />
+                        <p className="text-sm">Select a music track to configure audio settings</p>
                       </div>
-                      <div>
-                        <label className="text-sm font-medium">Start Time</label>
-                        <input type="text" placeholder="00:00" className="w-full mt-2 px-3 py-2 border rounded" />
-                      </div>
-                    </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>
             </TabsContent>
 
             <TabsContent value="export" className="h-full">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Export Settings</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-sm font-medium">Video Name</label>
-                      <input 
-                        type="text" 
-                        defaultValue={`${currentProject.name}_curiosity_hook_${new Date().toISOString().split('T')[0]}`}
-                        className="w-full mt-2 px-3 py-2 border rounded"
-                      />
-                    </div>
-                    <div className="flex space-x-4">
-                      <Button size="lg" className="flex-1">
-                        <Download className="w-4 h-4 mr-2" />
-                        Export Single Video
-                      </Button>
-                      <Button variant="outline" size="lg" className="flex-1">
-                        <Copy className="w-4 h-4 mr-2" />
-                        Batch Export (10 variations)
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <VideoExport onProgressUpdate={setExportProgress} />
             </TabsContent>
           </Tabs>
         </div>
       </div>
 
-      {/* Preview Panel */}
-      <div className="w-80 border-l border-border p-6">
-        <div className="sticky top-6">
-          <h3 className="font-semibold mb-4">Preview</h3>
-          <div className="aspect-[9/16] bg-black rounded-lg relative overflow-hidden">
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Button
-                variant="ghost"
-                size="lg"
-                onClick={() => setIsPlaying(!isPlaying)}
-                className="text-white hover:bg-white/20"
-              >
-                {isPlaying ? <Pause className="w-8 h-8" /> : <Play className="w-8 h-8" />}
-              </Button>
-            </div>
-            
-            {/* Mock preview content */}
-            <div className="absolute top-4 left-4 right-4">
-              <p className="text-white text-lg font-bold text-center">
-                This fitness app changed my life in 30 days...
-              </p>
-            </div>
-            
-            <div className="absolute bottom-4 left-4 right-4 text-center">
-              <p className="text-white text-sm">{currentProject.name} Demo</p>
-            </div>
-          </div>
-          
-          <div className="mt-4 space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>Duration</span>
-              <span>15s</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>Format</span>
-              <span>9:16 MP4</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>Size</span>
-              <span>12.4 MB</span>
-            </div>
-          </div>
 
-          <Button className="w-full mt-4" variant="outline">
-            <RotateCcw className="w-4 h-4 mr-2" />
-            Reset Preview
-          </Button>
-        </div>
-      </div>
     </div>
   )
 }
