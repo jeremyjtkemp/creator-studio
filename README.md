@@ -1,4 +1,3 @@
-cat > README.md << 'EOF'
 # Creator Studio
 
 A scalable content creation platform for generating viral TikTok-style videos at scale.
