@@ -1,12 +1,16 @@
 import { AuthProvider, useAuth } from '@/lib/auth-context';
+import { ProjectProvider } from '@/lib/project-context';
+import { HookVisualsProvider } from '@/lib/hook-visuals-context';
+import { AssetsProvider } from '@/lib/assets-context';
 import { ThemeProvider } from "@/components/theme-provider";
 import { LoginForm } from '@/components/login-form';
 import { Navbar } from '@/components/navbar';
 import { AppSidebar } from '@/components/appSidebar';
-import { Home } from '@/pages/Home';
+import { VideoCreator } from '@/pages/VideoCreator';
+import { AssetLibrary } from '@/pages/AssetLibrary';
+import { Analytics } from '@/pages/Analytics';
+import { Archive } from '@/pages/Archive';
 import { Settings } from '@/pages/Settings';
-import { Page1 } from '@/pages/Page1';
-import { Page2 } from '@/pages/Page2';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import {
   SidebarProvider,
@@ -22,26 +26,33 @@ function AppContent() {
 
   return (
     <SidebarProvider>
-      <div className="flex flex-col w-full min-h-screen bg-background">
+      <div className="flex flex-col w-full min-h-screen bg-background grid-background">
         <Navbar />
         {!user ? (
           <main className="flex flex-col items-center justify-center flex-1 p-4">
             <LoginForm />
           </main>
         ) : (
-          <div className="flex flex-1">
-            <AppSidebar />
-            <SidebarInset className="flex-1">
-              <main className="flex-1">
-                <Routes>
-                  <Route path="/" element={<Home />} />
-                  <Route path="/page1" element={<Page1 />} />
-                  <Route path="/page2" element={<Page2 />} />
-                  <Route path="/settings" element={<Settings />} />
-                </Routes>
-              </main>
-            </SidebarInset>
-          </div>
+          <ProjectProvider>
+            <HookVisualsProvider>
+              <AssetsProvider>
+                <div className="flex flex-1">
+                  <AppSidebar />
+                  <SidebarInset className="flex-1">
+                    <main className="flex-1">
+                      <Routes>
+                        <Route path="/" element={<VideoCreator />} />
+                        <Route path="/assets" element={<AssetLibrary />} />
+                        <Route path="/analytics" element={<Analytics />} />
+                        <Route path="/archive" element={<Archive />} />
+                        <Route path="/settings" element={<Settings />} />
+                      </Routes>
+                    </main>
+                  </SidebarInset>
+                </div>
+              </AssetsProvider>
+            </HookVisualsProvider>
+          </ProjectProvider>
         )}
       </div>
     </SidebarProvider>
@@ -53,10 +64,10 @@ function App() {
     <AuthProvider>
       <ThemeProvider 
         attribute="class" 
-        defaultTheme="system" 
-        enableSystem
+        defaultTheme="dark" 
+        enableSystem={false}
         disableTransitionOnChange
-        storageKey="volo-app-theme"
+        storageKey="creator-studio-theme"
       >
         <Router>
           <AppContent />

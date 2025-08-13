@@ -4,7 +4,8 @@
   "description": "Full-stack React + Hono template with Firebase Auth, Neon DB, and Cloudflare deployment",
   "type": "module",
   "scripts": {
-    "dev": "node scripts/run-dev.js",
+    "dev": "node scripts/simple-dev.js",
+    "dev:full": "node scripts/run-dev.js",
     "firebase:emulator": "firebase emulators:start --only auth --project demo-project --export-on-exit=./data/firebase-emulator --import=./data/firebase-emulator",
     "post-setup": "node scripts/post-setup.js",
     "connect:auth": "npx create-volo-app --connect --auth",
@@ -15,7 +16,8 @@
     "connect:deploy": "npx create-volo-app --connect --deploy",
     "connection:status": "npx create-volo-app --status",
     "build": "cd ui && pnpm run build",
-    "deploy": "cd server && wrangler deploy && echo 'Frontend deployment: Connect your Git repo to Cloudflare Pages'"
+    "deploy": "cd server && wrangler deploy && echo 'Frontend deployment: Connect your Git repo to Cloudflare Pages'",
+    "dev:simple": "node start-app.js"
   },
   "engines": {
     "node": ">=20.0.0",
@@ -25,7 +27,8 @@
     "concurrently": "^8.2.2",
     "firebase-tools": "^13.0.0",
     "get-port": "^7.0.0",
-    "postgres": "^3.4.7"
+    "postgres": "^3.4.7",
+    "embedded-postgres": "17.5.0-beta.15"
   },
   "keywords": [
     "react",
@@ -52,7 +55,7 @@
       "embedded-postgres",
       "@embedded-postgres/darwin-arm64",
       "@embedded-postgres/darwin-x64",
-      "@embedded-postgres/linux-arm64", 
+      "@embedded-postgres/linux-arm64",
       "@embedded-postgres/linux-x64",
       "@embedded-postgres/win32-x64"
     ]

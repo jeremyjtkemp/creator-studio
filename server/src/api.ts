@@ -3,9 +3,8 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { authMiddleware } from './middleware/auth';
-import { getDatabase, testDatabaseConnection } from './lib/db';
-import { setEnvContext, clearEnvContext, getDatabaseUrl } from './lib/env';
-import * as schema from './schema/users';
+import { setEnvContext, clearEnvContext } from './lib/env';
+import { generateAIHooks } from './lib/ai-service';
 
 type Env = {
   RUNTIME?: string;
@@ -47,41 +46,14 @@ api.get('/hello', (c) => {
   });
 });
 
-// Database test route - public for testing
-api.get('/db-test', async (c) => {
-  try {
-    // Use external DB URL if available, otherwise use local PostgreSQL database server
-    // Note: In development, the port is dynamically allocated by port-manager.js
-    const defaultLocalConnection = process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5502/postgres';
-    const dbUrl = getDatabaseUrl() || defaultLocalConnection;
-    
-    const db = await getDatabase(dbUrl);
-    const isHealthy = await testDatabaseConnection();
-    
-    if (!isHealthy) {
-      return c.json({
-        error: 'Database connection is not healthy',
-        timestamp: new Date().toISOString(),
-      }, 500);
-    }
-    
-    const result = await db.select().from(schema.users).limit(5);
-    
-    return c.json({
-      message: 'Database connection successful!',
-      users: result,
-      connectionHealthy: isHealthy,
-      usingLocalDatabase: !getDatabaseUrl(),
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error('Database test error:', error);
-    return c.json({
-      error: 'Database connection failed',
-      details: error instanceof Error ? error.message : 'Unknown error',
-      timestamp: new Date().toISOString(),
-    }, 500);
-  }
+// Health check route - Firebase only setup
+api.get('/health', async (c) => {
+  return c.json({
+    status: 'ok',
+    message: 'Creator Studio API is running',
+    database: 'Firebase Firestore',
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // Protected routes - require authentication
@@ -95,6 +67,42 @@ protectedRoutes.get('/me', (c) => {
     user,
     message: 'You are authenticated!',
   });
+});
+
+// Generate AI hooks for projects
+protectedRoutes.post('/hooks/generate', async (c) => {
+  const user = c.get('user');
+  
+  try {
+    const { appDescription, projectName, hookCount = 10 } = await c.req.json();
+    
+    if (!appDescription) {
+      return c.json({ error: 'App description is required' }, 400);
+    }
+
+    console.log(`🎯 Generating ${hookCount} hooks for user ${user.id}`);
+    console.log(`📱 Project: ${projectName || 'Unknown'}`);
+    console.log(`📝 Description: ${appDescription.substring(0, 100)}...`);
+    
+    const hooks = await generateAIHooks(appDescription, projectName, hookCount);
+    
+    console.log(`✅ Successfully generated ${hooks.length} hooks`);
+    
+    return c.json({ 
+      hooks,
+      generated: hooks.length,
+      timestamp: new Date().toISOString(),
+      success: true
+    });
+    
+  } catch (error) {
+    console.error('❌ Hook generation error:', error);
+    return c.json({ 
+      error: 'Failed to generate hooks',
+      details: error instanceof Error ? error.message : 'Unknown error',
+      success: false
+    }, 500);
+  }
 });
 
 // Mount the protected routes under /protected

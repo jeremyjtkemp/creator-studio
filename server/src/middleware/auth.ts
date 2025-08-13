@@ -1,13 +1,18 @@
 import { MiddlewareHandler } from 'hono';
 import { verifyFirebaseToken } from '../lib/firebase-auth';
-import { getDatabase } from '../lib/db';
-import { eq } from 'drizzle-orm';
-import { User, users } from '../schema/users';
-import { getFirebaseProjectId, getDatabaseUrl } from '../lib/env';
+import { getFirebaseProjectId } from '../lib/env';
+
+// Simple user type based on Firebase user
+interface FirebaseUser {
+  id: string;
+  email: string;
+  display_name?: string;
+  photo_url?: string;
+}
 
 declare module 'hono' {
   interface ContextVariableMap {
-    user: User;
+    user: FirebaseUser;
   }
 }
 
@@ -22,28 +27,13 @@ export const authMiddleware: MiddlewareHandler = async (c, next) => {
     const firebaseProjectId = getFirebaseProjectId();
     const firebaseUser = await verifyFirebaseToken(token, firebaseProjectId);
 
-    const databaseUrl = getDatabaseUrl();
-    const db = await getDatabase(databaseUrl);
-
-    // Upsert: insert if not exists, do nothing if exists
-    await db.insert(users)
-      .values({
-        id: firebaseUser.id,
-        email: firebaseUser.email!,
-        display_name: null,
-        photo_url: null,
-      })
-      .onConflictDoNothing();
-
-    // Get the user (either just created or already existing)
-    const [user] = await db.select()
-      .from(users)
-      .where(eq(users.id, firebaseUser.id))
-      .limit(1);
-
-    if (!user) {
-      throw new Error('Failed to create or retrieve user');
-    }
+    // Use Firebase user directly - no PostgreSQL needed
+    const user: FirebaseUser = {
+      id: firebaseUser.id,
+      email: firebaseUser.email!,
+      display_name: firebaseUser.display_name || null,
+      photo_url: firebaseUser.photo_url || null,
+    };
 
     c.set('user', user);
     await next();

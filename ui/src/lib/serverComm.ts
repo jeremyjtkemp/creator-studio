@@ -45,9 +45,44 @@ async function fetchWithAuth(
   return response;
 }
 
+// Type definitions for hook generation
+export interface GeneratedHook {
+  text: string;
+  category: 'curiosity' | 'controversial' | 'pov' | 'emotional' | 'statistical';
+  estimatedEngagement: string;
+  viralityScore: 'high' | 'medium' | 'low';
+  variations: number;
+}
+
+export interface GenerateHooksRequest {
+  appDescription: string;
+  projectName?: string;
+  hookCount?: number;
+}
+
+export interface GenerateHooksResponse {
+  hooks: GeneratedHook[];
+  generated: number;
+  timestamp: string;
+  success: boolean;
+  error?: string;
+  details?: string;
+}
+
 // API endpoints
 export async function getCurrentUser() {
   const response = await fetchWithAuth('/api/v1/protected/me');
+  return response.json();
+}
+
+export async function generateHooks(data: GenerateHooksRequest): Promise<GenerateHooksResponse> {
+  const response = await fetchWithAuth('/api/v1/protected/hooks/generate', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
   return response.json();
 }
 
@@ -65,5 +100,6 @@ export async function getCurrentUser() {
 
 export const api = {
   getCurrentUser,
+  generateHooks,
   // Add other API endpoints here
 }; 
